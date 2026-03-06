@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IB Real Estate Analyzer - Edmonton Master Edition</title>
+    <script src="https://unpkg.com/react@17/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@17/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/babel-standalone@6/babel.min.js"></script>
+    <style>
+        body { background-color: #121212; color: #ffffff; font-family: 'Segoe UI', sans-serif; margin: 0; padding: 20px; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        .header { color: #add8e6; text-align: center; border-bottom: 1px solid #333; padding-bottom: 10px; margin-bottom: 20px; position: relative; }
+        .btn-back { position: absolute; left: 0; top: 5px; background: none; border: 1px solid #add8e6; color: #add8e6; padding: 5px 15px; border-radius: 4px; cursor: pointer; }
+        .btn-primary { background: #add8e6; color: #000; border: none; font-weight: bold; padding: 10px 20px; border-radius: 4px; cursor: pointer; margin-bottom: 20px;}
+        .tabs { display: flex; border-bottom: 1px solid #333; margin-bottom: 20px; overflow-x: auto; }
+        .tab { padding: 12px 20px; cursor: pointer; color: #aaa; border-bottom: 2px solid transparent; white-space: nowrap; font-size: 13px; font-weight: bold; }
+        .tab.active { color: #add8e6; border-bottom: 2px solid #add8e6; }
+        .card { background-color: #1e1e1e; padding: 20px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #2a2a2a; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        input { width: 100%; padding: 10px; background-color: #2c2c2c; border: 1px solid #444; color: white; border-radius: 4px; box-sizing: border-box; margin-bottom: 10px; font-family: monospace; font-size: 14px;}
+        label { font-size: 11px; color: #888; text-transform: uppercase; display: block; margin-bottom: 4px;}
+        .results-box { background-color: #1a1a1a; border: 2px solid #add8e6; padding: 15px; border-radius: 8px; margin-bottom: 20px; display: flex; justify-content: space-around; text-align: center; gap: 10px;}
+        .metric { flex: 1; border-right: 1px solid #333; padding: 0 10px; }
+        .metric:last-child { border-right: none; }
+        .metric div { font-size: 22px; font-weight: bold; color: #add8e6; margin-top: 5px; }
+        .highlight-green { color: #2ecc71 !important; }
+        .highlight-gold { color: #f39c12 !important; }
+        .highlight-purple { color: #9b59b6 !important; }
+        .comp-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 10px;}
+        .comp-table th { color: #888; text-align: left; padding: 8px; border-bottom: 1px solid #333; }
+        .comp-table td { padding: 4px; border-bottom: 1px solid #222; }
+        .gantt-row { display: flex; align-items: center; margin-bottom: 8px; height: 25px; }
+        .gantt-label { width: 100px; font-size: 11px; color: #888; text-transform: uppercase;}
+        .gantt-track { flex: 1; background: #222; height: 100%; position: relative; border-radius: 3px; }
+        .gantt-bar { height: 100%; background: #add8e6; position: absolute; border-radius: 3px; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+    <script type="text/babel">
+        const n = (val) => isNaN(parseFloat(val)) ? 0 : parseFloat(val);
+
+        const createDeal = () => ({
+            id: Date.now().toString(),
+            activeTab: 'overview',
+            info: { street: 'New Edmonton Deal', sqft: 1100 },
+            comps: [ {a:'', p:0, s:0}, {a:'', p:0, s:0}, {a:'', p:0, s:0} ],
+            purchase: { price: 300000, deposit: 60000, closingCosts: 2000 },
+            financing: { rate: 9, months: 6, holdingCostsPerMo: 450 },
+            jv: { mySplit: 50, partnerSplit: 50 },
+            rehab: { main: 40000, suite: 65000, grants: 0, contingency: 5000 },
+            timeline: { demo: 7, framing: 14, roughins: 14, drywall: 10, finish: 21 },
+            brrrr: { isSuite: true, rentMain: 1800, rentSuite: 1300, ltv: 80, refiRate: 5.2, taxesIns: 400 },
+            sell: { realtorFeePercent: 5, closingCosts: 1500, manualArv: 500000 }
+        });
+
+        const App = () => {
+            const [deals, setDeals] = React.useState([createDeal()]);
+            const [view, setView] = React.useState('dashboard');
+
+            const update = (dealId, cat, key, val, subKey) => {
+                setDeals(prev => prev.map(d => {
+                    if (d.id !== dealId) return d;
+                    if (cat === 'activeTab') return { ...d, activeTab: val };
+                    if (cat === 'comps') {
+                        const newComps = [...d.comps];
+                        newComps[key] = { ...newComps[key], [subKey]: val };
+                        return { ...d, comps: newComps };
+                    }
+                    return { ...d, [cat]: { ...d[cat], [key]: val } };
+                }));
+            };
+
+            const calc = (d) => {
+                // Comps & ARV
+                const activeComps = d.comps.filter(c => n(c.p) > 0 && n(c.s) > 0);
+                const avgPPSF = activeComps.length > 0 ? activeComps.reduce((acc, c) => acc + (n(c.p)/n(c.s)), 0) / activeComps.length : 0;
+                const compArv = avgPPSF * n(d.info.sqft);
+                const finalArv = activeComps.length > 0 ? compArv : n(d.sell.manualArv);
+
+                // Rehab & Capital
+                const totalRehab = n(d.rehab.main) + (d.brrrr.isSuite ? n(d.rehab.suite) : 0) + n(d.rehab.contingency);
+                const totalHolding = (n(d.financing.months) * n(d.financing.holdingCostsPerMo)) + ((n(d.purchase.price) - n(d.purchase.deposit)) * (n(d.financing.rate)/100/12) * n(d.financing.months));
+                const cashRequired = n(d.purchase.deposit) + n(d.purchase.closingCosts) + totalRehab + totalHolding - n(d.rehab.grants);
+                const totalCostBasis = n(d.purchase.price) + n(d.purchase.closingCosts) + totalRehab + totalHolding - n(d.rehab.grants);
+
+                // Flip Exit
+                const sellCosts = (finalArv * (n(d.sell.realtorFeePercent)/100)) + n(d.sell.closingCosts);
+                const flipProfit = finalArv - totalCostBasis - sellCosts;
+                const myFlipProfit = flipProfit * (n(d.jv.mySplit)/100);
+
+                // BRRRR Exit
+                const refiLoan = finalArv * (n(d.brrrr.ltv)/100);
+                const initialLoan = n(d.purchase.price) - n(d.purchase.deposit);
+                const cashReleased = refiLoan - initialLoan;
+                const brrrrCashLeft = cashRequired - cashReleased;
+
+                const totalRent = n(d.brrrr.rentMain) + (d.brrrr.isSuite ? n(d.brrrr.rentSuite) : 0);
+                const monthlyMortgageRate = (n(d.brrrr.refiRate)/100)/12;
+                const refiPmt = refiLoan * (monthlyMortgageRate * Math.pow(1 + monthlyMortgageRate, 300)) / (Math.pow(1 + monthlyMortgageRate, 300) - 1);
+                const monthlyOpEx = n(d.brrrr.taxesIns) + (totalRent * 0.10);
+                const brrrrCashFlow = totalRent - refiPmt - monthlyOpEx;
+
+                // Timeline
+                const totalDays = Object.values(d.timeline).reduce((acc, val) => acc + n(val), 0);
+
+                return { finalArv, totalRehab, cashRequired, flipProfit, myFlipProfit, brrrrCashLeft, brrrrCashFlow, totalDays, avgPPSF };
+            };
+
+            if (view === 'dashboard') {
+                return (
+                    <div className="container">
+                        <div className="header"><h2>Deal Pipeline</h2></div>
+                        <button className="btn-primary" onClick={() => setDeals([...deals, createDeal()])}>+ Add New Deal</button>
+                        <div className="grid">
+                            {deals.map(d => {
+                                const r = calc(d);
+                                return (
+                                    <div key={d.id} className="card" onClick={() => setView(d.id)} style={{cursor:'pointer', borderLeft:'4px solid #add8e6'}}>
+                                        <b style={{fontSize:'18px'}}>{d.info.street}</b>
+                                        <div style={{marginTop:'10px', color:'#aaa', fontSize:'13px'}}>
+                                            Flip Profit: <span style={{color:'#add8e6'}}>${Math.round(r.flipProfit).toLocaleString()}</span><br/>
+                                            BRRRR Cash Left: <span style={{color: r.brrrrCashLeft <= 0 ? '#2ecc71' : '#f39c12'}}>${Math.round(r.brrrrCashLeft).toLocaleString()}</span>
+                                        </div>
+                                    </div>
+                                )
+                            })}
+                        </div>
+                    </div>
+                );
+            }
+
+            const d = deals.find(x => x.id === view);
+            const r = calc(d);
+
+            return (
+                <div className="container">
+                    <div className="header">
+                        <button className="btn-back" onClick={() => setView('dashboard')}>← Portfolio</button>
+                        <h2>{d.info.street}</h2>
+                    </div>
+
+                    <div className="results-box">
+                        <div className="metric"><label>Total Cash Req.</label><div>${Math.round(r.cashRequired).toLocaleString()}</div></div>
+                        <div className="metric"><label>Est. ARV</label><div>${Math.round(r.finalArv).toLocaleString()}</div></div>
+                        <div className="metric"><label>FLIP: Net Profit</label><div className="highlight-gold">${Math.round(r.flipProfit).toLocaleString()}</div></div>
+                        <div className="metric"><label>BRRRR: Cash Left In</label><div className={r.brrrrCashLeft <= 0 ? "highlight-green" : ""}>${Math.round(r.brrrrCashLeft).toLocaleString()}</div></div>
+                    </div>
+
+                    <div className="tabs">
+                        {['overview', 'comps', 'rehab', 'timeline', 'brrrr'].map(t => (
+                            <div key={t} className={`tab ${d.activeTab === t ? 'active' : ''}`} onClick={() => update(d.id, 'activeTab', null, t)}>
+                                {t.toUpperCase()}
+                            </div>
+                        ))}
+                    </div>
+
+                    {d.activeTab === 'overview' && (
+                        <div className="grid">
+                            <div className="card">
+                                <h3 style={{marginTop:0, color:'#add8e6'}}>Acquisition</h3>
+                                <label>Property Address</label><input type="text" value={d.info.street} onChange={e => update(d.id, 'info', 'street', e.target.value)} />
+                                <label>Purchase Price</label><input type="number" value={d.purchase.price} onChange={e => update(d.id, 'purchase', 'price', e.target.value)} />
+                                <label>Down Payment (Deposit)</label><input type="number" value={d.purchase.deposit} onChange={e => update(d.id, 'purchase', 'deposit', e.target.value)} />
+                                <label>Closing Legal Fees</label><input type="number" value={d.purchase.closingCosts} onChange={e => update(d.id, 'purchase', 'closingCosts', e.target.value)} />
+                            </div>
+                            <div className="card">
+                                <h3 style={{marginTop:0, color:'#add8e6'}}>Holding & JV Split</h3>
+                                <label>Bridge/Hard Money Rate (%)</label><input type="number" value={d.financing.rate} onChange={e => update(d.id, 'financing', 'rate', e.target.value)} />
+                                <label>Holding Months</label><input type="number" value={d.financing.months} onChange={e => update(d.id, 'financing', 'months', e.target.value)} />
+                                <hr style={{borderColor:'#333', margin:'15px 0'}}/>
+                                <label>My JV Split (%)</label>
+                                <input type="number" value={d.jv.mySplit} onChange={e => {
+                                    update(d.id, 'jv', 'mySplit', e.target.value);
+                                    update(d.id, 'jv', 'partnerSplit', 100 - n(e.target.value));
+                                }} />
+                                <div style={{fontSize:'14px', color:'#add8e6', marginTop:'10px'}}>My Take-Home (Flip): <b>${Math.round(r.myFlipProfit).toLocaleString()}</b></div>
+                            </div>
+                        </div>
+                    )}
+
+                    {d.activeTab === 'comps' && (
+                        <div className="card">
+                            <h3 style={{marginTop:0, color:'#add8e6'}}>Data-Driven Valuation</h3>
+                            <div style={{width:'50%'}}>
+                                <label>Subject Property SqFt</label>
+                                <input type="number" value={d.info.sqft} onChange={e => update(d.id, 'info', 'sqft', e.target.value)} />
+                            </div>
+                            <table className="comp-table" style={{marginTop:'15px'}}>
+                                <thead><tr><th>Comp Address</th><th>Sale Price</th><th>SqFt</th><th>$/SF</th></tr></thead>
+                                <tbody>
+                                    {d.comps.map((c, i) => (
+                                        <tr key={i}>
+                                            <td><input type="text" value={c.a} placeholder="123 Example St" onChange={e => update(d.id, 'comps', i, e.target.value, 'a')} /></td>
+                                            <td><input type="number" value={c.p || ''} placeholder="$" onChange={e => update(d.id, 'comps', i, e.target.value, 'p')} /></td>
+                                            <td><input type="number" value={c.s || ''} placeholder="SF" onChange={e => update(d.id, 'comps', i, e.target.value, 's')} /></td>
+                                            <td style={{fontWeight:'bold'}}>{n(c.s) > 0 ? `$${(n(c.p)/n(c.s)).toFixed(0)}` : '-'}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                            <div style={{background: '#2c2c2c', padding: '15px', borderRadius: '4px', borderLeft: '4px solid #add8e6', marginTop: '15px'}}>
+                                <label>Calculated ARV (Based on ${r.avgPPSF.toFixed(0)} / SF)</label>
+                                <div style={{fontSize:'24px', fontWeight:'bold', color:'white'}}>${Math.round(r.finalArv).toLocaleString()}</div>
+                                <div style={{fontSize:'12px', color:'#aaa', marginTop:'10px'}}>* If no comps are entered, it falls back to Manual ARV: <input type="number" style={{width:'100px', display:'inline-block', padding:'4px', margin:0}} value={d.sell.manualArv} onChange={e => update(d.id, 'sell', 'manualArv', e.target.value)}/></div>
+                            </div>
+                        </div>
+                    )}
+
+                    {d.activeTab === 'rehab' && (
+                        <div className="grid">
+                            <div className="card">
+                                <h3 style={{marginTop:0, color:'#add8e6'}}>Construction Budget</h3>
+                                <label>Main Floor Rehab</label><input type="number" value={d.rehab.main} onChange={e => update(d.id, 'rehab', 'main', e.target.value)} />
+                                <label style={{color: d.brrrr.isSuite ? '#2ecc71' : '#888'}}>Basement Suite Rehab {d.brrrr.isSuite ? '(Active)' : '(Disabled in BRRRR Tab)'}</label>
+                                <input type="number" value={d.rehab.suite} disabled={!d.brrrr.isSuite} style={{opacity: d.brrrr.isSuite ? 1 : 0.3}} onChange={e => update(d.id, 'rehab', 'suite', e.target.value)} />
+                                <label>Contingency / Permits</label><input type="number" value={d.rehab.contingency} onChange={e => update(d.id, 'rehab', 'contingency', e.target.value)} />
+                                <div style={{fontSize:'18px', fontWeight:'bold', marginTop:'15px', borderTop:'1px solid #333', paddingTop:'10px'}}>Total Rehab: <span style={{color:'#add8e6'}}>${r.totalRehab.toLocaleString()}</span></div>
+                            </div>
+                            <div className="card" style={{borderColor: '#9b59b6'}}>
+                                <h3 style={{marginTop:0, color:'#9b59b6'}}>Government Grants & Incentives</h3>
+                                <p style={{fontSize:'13px', color:'#aaa'}}>Enter forgivable loans or municipal suite grants (e.g. Edmonton AHIP or CMHC). This directly lowers your Cash Required.</p>
+                                <label className="highlight-purple">Secured Grant Funding ($)</label>
+                                <input type="number" value={d.rehab.grants} onChange={e => update(d.id, 'rehab', 'grants', e.target.value)} />
+                            </div>
+                        </div>
+                    )}
+
+                    {d.activeTab === 'timeline' && (
+                        <div className="card">
+                            <h3 style={{marginTop:0, color:'#add8e6'}}>Project Schedule ({r.totalDays} Days)</h3>
+                            <div className="grid" style={{marginBottom:'30px'}}>
+                                {Object.entries(d.timeline).map(([phase, days]) => (
+                                    <div key={phase}><label>{phase}</label><input type="number" value={days} onChange={e => update(d.id, 'timeline', phase, e.target.value)} /></div>
+                                ))}
+                            </div>
+                            <div>
+                                {Object.entries(d.timeline).map(([phase, days], i) => {
+                                    let start = 0;
+                                    Object.values(d.timeline).slice(0, i).forEach(v => start += n(v));
+                                    const widthPct = r.totalDays > 0 ? (n(days)/r.totalDays)*100 : 0;
+                                    const startPct = r.totalDays > 0 ? (start/r.totalDays)*100 : 0;
+                                    return (
+                                        <div key={phase} className="gantt-row">
+                                            <div className="gantt-label">{phase}</div>
+                                            <div className="gantt-track">
+                                                <div className="gantt-bar" style={{left: `${startPct}%`, width: `${widthPct}%`}}></div>
+                                            </div>
+                                        </div>
+                                    )
+                                })}
+                            </div>
+                        </div>
+                    )}
+
+                    {d.activeTab === 'brrrr' && (
+                        <div className="grid">
+                            <div className="card" style={{borderLeft: d.brrrr.isSuite ? '4px solid #2ecc71' : '1px solid #2a2a2a'}}>
+                                <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+                                    <h3 style={{marginTop:0, color:'#add8e6', marginBottom:0}}>Rental Income</h3>
+                                    <button onClick={() => update(d.id, 'brrrr', 'isSuite', !d.brrrr.isSuite)} style={{background:'#222', border:'1px solid #444', color:'white', padding:'5px 10px', borderRadius:'4px', cursor:'pointer'}}>
+                                        {d.brrrr.isSuite ? 'Remove Suite' : 'Add Suite'}
+                                    </button>
+                                </div>
+                                <hr style={{borderColor:'#333', margin:'15px 0'}}/>
+                                <label>Main Floor Rent</label><input type="number" value={d.brrrr.rentMain} onChange={e => update(d.id, 'brrrr', 'rentMain', e.target.value)} />
+                                {d.brrrr.isSuite && (
+                                    <>
+                                        <label className="highlight-green">Basement Suite Rent</label>
+                                        <input type="number" value={d.brrrr.rentSuite} onChange={e => update(d.id, 'brrrr', 'rentSuite', e.target.value)} />
+                                    </>
+                                )}
+                                <div style={{background: '#1a1a1a', padding: '10px', borderRadius: '4px', marginTop: '10px'}}>
+                                    <label>Est. Monthly Cash Flow</label>
+                                    <div style={{fontSize:'20px', fontWeight:'bold', color: r.brrrrCashFlow > 0 ? '#2ecc71' : '#e74c3c'}}>${Math.round(r.brrrrCashFlow).toLocaleString()}</div>
+                                </div>
+                            </div>
+                            <div className="card">
+                                <h3 style={{marginTop:0, color:'#add8e6'}}>Refinance Details</h3>
+                                <label>Target LTV (%)</label><input type="number" value={d.brrrr.ltv} onChange={e => update(d.id, 'brrrr', 'ltv', e.target.value)} />
+                                <label>Refinance Mortgage Rate (%)</label><input type="number" value={d.brrrr.refiRate} onChange={e => update(d.id, 'brrrr', 'refiRate', e.target.value)} />
+                                <label>Monthly Taxes & Insurance</label><input type="number" value={d.brrrr.taxesIns} onChange={e => update(d.id, 'brrrr', 'taxesIns', e.target.value)} />
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+        ReactDOM.render(<App />, document.getElementById('root'));
+    </script>
+</body>
+</html>
